@@ -7,6 +7,61 @@ Bridges agent responses to actual tool execution for v2 (text_exemplars, model.r
 from typing import Any, List
 
 
+def _activation_bar(value: float, max_value: float, width: int = 20) -> str:
+    """Return a small ASCII bar showing relative activation strength."""
+    if max_value <= 0:
+        return " " * width
+    ratio = max(0.0, min(1.0, value / max_value))
+    filled = int(ratio * width)
+    return "█" * filled + "░" * (width - filled)
+
+
+def _colorize_token(token: str, value: float, max_value: float) -> str:
+    """Return an ANSI-colored token string based on activation intensity."""
+    if max_value <= 0:
+        return token
+    ratio = max(0.0, min(1.0, value / max_value))
+    if ratio >= 0.8:
+        return f"\033[91m\033[1m{token}\033[0m"  # bright red bold (hot)
+    elif ratio >= 0.5:
+        return f"\033[93m{token}\033[0m"          # yellow (warm)
+    elif ratio >= 0.2:
+        return f"\033[36m{token}\033[0m"           # cyan (mild)
+    else:
+        return f"\033[90m{token}\033[0m"           # gray (cold)
+
+
+def _print_activation_heatmap(tokens: list, per_token: list, label: str = "") -> None:
+    """Print a visual heatmap of token activations to console."""
+    if not tokens or not per_token or len(tokens) != len(per_token):
+        return
+    max_val = max(per_token) if per_token else 0.0
+    if max_val == 0:
+        return
+
+    if label:
+        print(f"\n  {label}")
+    print(f"  {'─' * 70}")
+
+    # Inline colored text reconstruction
+    colored_parts = []
+    for tok, val in zip(tokens, per_token):
+        colored_parts.append(_colorize_token(tok, val, max_val))
+    print(f"  {''.join(colored_parts)}")
+
+    # Top activated tokens table
+    pairs = sorted(zip(tokens, per_token), key=lambda x: x[1], reverse=True)
+    non_special = [(t, v) for t, v in pairs if t not in ('<bos>', '<eos>', '<pad>', '<s>', '</s>')]
+    top_n = non_special[:8]
+    if top_n:
+        print(f"\n  {'Token':<20} {'Activation':>10}  Bar")
+        print(f"  {'─'*20} {'─'*10}  {'─'*20}")
+        for tok, val in top_n:
+            bar = _activation_bar(val, max_val)
+            print(f"  {repr(tok):<20} {val:>10.4f}  {bar}")
+    print()
+
+
 class ExperimentEnvironment:
     """Compatibility layer expected by main.py.
 
@@ -97,6 +152,12 @@ class ExperimentEnvironment:
                                 f"- Tokens/activations (first {len(preview)} of {len(token_pairs)}): {preview}\n"
                             )
 
+                            # Always print visual activation heatmap to console
+                            print(f"\n{'='*70}")
+                            print(f"  model.run  |  Max: {summary_max:.4f}  Mean: {summary_mean:.4f}  Tokens: {len(tokens)}")
+                            _print_activation_heatmap(tokens, per_token, label=f"Prompt: {prompt[:80]}{'…' if len(prompt) > 80 else ''}")
+                            print(f"{'='*70}")
+
                             # Debug 模式下打印完整输出
                             if self.debug:
                                 print("\n" + "="*80)
@@ -179,8 +240,14 @@ class ExperimentEnvironment:
                             else:
                                 outputs.append(f"=== DETAILED FEATURE ANALYSIS ===")
                                 outputs.append(f"Top {len(detailed_exemplars)} maximally activating examples from corpus (top_k={top_k}, max_samples={max_samples}):")
-                            
-                            # Format detailed exemplars with token-level information (limit to 5 for context)
+
+                            # ── Console: visual summary header ──
+                            global_max = max((ex["max_activation"] for ex in detailed_exemplars), default=0.0)
+                            print(f"\n{'='*70}")
+                            print(f"  TEXT EXEMPLARS  |  {len(detailed_exemplars)} examples  |  Global max activation: {global_max:.4f}")
+                            print(f"{'='*70}")
+
+                            # Format detailed exemplars with token-level information
                             for i, exemplar in enumerate(detailed_exemplars[:10], 1):
                                 text = exemplar["text"]
                                 max_act = exemplar["max_activation"]
@@ -188,31 +255,35 @@ class ExperimentEnvironment:
                                 tokens = exemplar["tokens"]
                                 per_token_acts = exemplar["per_token_activations"]
                                 max_token_idx = exemplar["max_token_index"]
-                                
-                                # Basic exemplar info (ultra-simplified for context length)
+
+                                # Basic exemplar info (for the LLM)
                                 outputs.append(f"\n{i}. max_activation={max_act:.4f}, mean_activation={mean_act:.4f}")
-                                outputs.append(f"   Text: {text}")#{'...' if len(text) > 80 else ''}
-                                
-                                # Token-level analysis if available (ultra-simplified)
+                                outputs.append(f"   Text: {text}")
+
+                                # ── Console: per-exemplar activation heatmap ──
+                                print(f"\n  #{i}  max={max_act:.4f}  mean={mean_act:.4f}  {_activation_bar(max_act, global_max, 15)}")
                                 if tokens and per_token_acts and len(tokens) == len(per_token_acts):
-                                    # Show only top 3 activating tokens to save space
+                                    _print_activation_heatmap(tokens, per_token_acts,
+                                                              label=f"Exemplar #{i}")
+
+                                # Token-level analysis if available (for the LLM)
+                                if tokens and per_token_acts and len(tokens) == len(per_token_acts):
                                     token_pairs = list(zip(tokens, per_token_acts))
                                     if token_pairs:
                                         sorted_pairs = sorted(token_pairs, key=lambda x: x[1], reverse=True)
                                         top_3 = sorted_pairs
-                                        
-                                        # Only show top 3 non-BOS tokens
+
                                         key_tokens = []
                                         for token, act in top_3:
                                             if token != '<bos>':
                                                 key_tokens.append(f"'{token}':{act:.3f}")
-                                                # if len(key_tokens) >= 3:
-                                                #     break
-                                        
+
                                         if key_tokens:
                                             outputs.append(f"   Key tokens: {', '.join(key_tokens)}")
                                 else:
                                     outputs.append(f"   Token-level analysis not available")
+
+                            print(f"{'='*70}\n")
                         else:
                             outputs.append("No corpus-based exemplars available (empty corpus or error). Consider providing --dataset_path.")
                     except Exception as e:
