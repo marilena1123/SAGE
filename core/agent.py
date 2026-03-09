@@ -151,7 +151,7 @@ def ask_agent(model: str, history: List[Dict[str, Any]]) -> str:
     
     # Initialize API clients if available
     if OPENAI_AVAILABLE:
-        openai.api_key = os.getenv("OPENAI_API_KEY")
+        openai.api_key = os.getenv("OPENROUTER_API_KEY", os.getenv("OPENAI_API_KEY"))
         openai.organization = os.getenv("OPENAI_ORGANIZATION")
     
     if ANTHROPIC_AVAILABLE:
@@ -220,19 +220,29 @@ def ask_agent(model: str, history: List[Dict[str, Any]]) -> str:
                 if model == 'gpt-4o-new':
                     model = 'gpt-4o-2024-11-20'
                 
-                # Use new OpenAI client for GPT-5 models
-                client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                
+                # Use OpenRouter-compatible client (OpenAI-compatible API)
+                openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+                if openrouter_api_key:
+                    client = openai.OpenAI(
+                        base_url="https://openrouter.ai/api/v1",
+                        api_key=openrouter_api_key,
+                    )
+                    # OpenRouter requires provider-prefixed model names
+                    api_model = f"openai/{model}" if not model.startswith("openai/") else model
+                else:
+                    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                    api_model = model
+
                 # GPT-5 models use max_completion_tokens instead of max_tokens
                 if model.startswith('gpt-5'):
                     params = {
-                        "model": model,
+                        "model": api_model,
                         "messages": history,
                         "max_completion_tokens": 4096,
                     }
                 else:
                     params = {
-                        "model": model,
+                        "model": api_model,
                         "messages": history,
                         "max_tokens": 4096,
                     }
