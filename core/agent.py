@@ -216,6 +216,53 @@ def ask_agent(model: str, history: List[Dict[str, Any]]) -> str:
                 return response.content[0].text
                 
             # Handle OpenAI models
+            # Handle StepFun models via OpenRouter
+            elif model.startswith('stepfun') and OPENAI_AVAILABLE:
+                openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+                if not openrouter_api_key:
+                    raise ValueError("OPENROUTER_API_KEY is required for StepFun models (routed via OpenRouter)")
+
+                client = openai.OpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=openrouter_api_key,
+                )
+
+                # Map shorthand to full OpenRouter model name
+                stepfun_model_map = {
+                    "stepfun": "stepfun/step-3.5-flash",
+                    "stepfun-step-3.5-flash": "stepfun/step-3.5-flash",
+                    "stepfun-step-2": "stepfun/step-2-16k",
+                    "stepfun-step-2-16k": "stepfun/step-2-16k",
+                    "stepfun-step-1": "stepfun/step-1-8k",
+                    "stepfun-step-1-8k": "stepfun/step-1-8k",
+                }
+                api_model = stepfun_model_map.get(model, f"stepfun/{model.replace('stepfun-', '')}")
+
+                params = {
+                    "model": api_model,
+                    "messages": history,
+                    "max_tokens": 4096,
+                }
+
+                r = client.chat.completions.create(**params)
+
+                # Record token usage
+                if TOKEN_TRACKING_AVAILABLE:
+                    tracker = get_tracker()
+                    if tracker:
+                        usage = getattr(r, 'usage', None)
+                        if usage:
+                            prompt_tokens = getattr(usage, 'prompt_tokens', 0)
+                            completion_tokens = getattr(usage, 'completion_tokens', 0)
+                            tracker.record_usage(
+                                model=api_model,
+                                prompt_tokens=prompt_tokens,
+                                completion_tokens=completion_tokens,
+                            )
+
+                return r.choices[0].message.content
+
+            # Handle OpenAI models
             elif model in ['gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-4o-new', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4'] and OPENAI_AVAILABLE:
                 if model == 'gpt-4o-new':
                     model = 'gpt-4o-2024-11-20'
@@ -356,7 +403,7 @@ def ask_agent(model: str, history: List[Dict[str, Any]]) -> str:
                 
             else:
                 print(f"❌ ERROR: Unrecognized model name: {model}")
-                available_models = ['gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-4o-new', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4']
+                available_models = ['gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-4o-new', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4', 'stepfun', 'stepfun-step-2', 'stepfun-step-1']
                 print(f"❌ Available models: {available_models}")
                 print(f"❌ OPENAI_AVAILABLE: {OPENAI_AVAILABLE}")
                 raise ValueError(f"Unrecognized model name: {model}. Available models: {available_models}")
@@ -376,7 +423,7 @@ def ask_agent(model: str, history: List[Dict[str, Any]]) -> str:
             elif "model" in str(e).lower() and "not found" in str(e).lower():
                 print(f'❌ ERROR: OpenAI model not found: {str(e)}')
                 print(f'❌ Requested model: {model}')
-                available_models = ['gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-4o-new', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4']
+                available_models = ['gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-4o-new', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4', 'stepfun', 'stepfun-step-2', 'stepfun-step-1']
                 print(f'❌ Available models: {available_models}')
                 raise ValueError(f"OpenAI model not found: {str(e)}. Requested: {model}, Available: {available_models}")
             else:
