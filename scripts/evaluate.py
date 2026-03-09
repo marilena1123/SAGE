@@ -44,10 +44,17 @@ from dataclasses import dataclass
 _openai_client = None
 
 def get_openai_client():
-    """Get or create OpenAI client (lazy initialization)"""
+    """Get or create OpenAI client (lazy initialization). Uses OpenRouter if OPENROUTER_API_KEY is set."""
     global _openai_client
     if _openai_client is None:
-        _openai_client = OpenAI()
+        openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_api_key:
+            _openai_client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=openrouter_api_key,
+            )
+        else:
+            _openai_client = OpenAI()
     return _openai_client
 
 
@@ -93,8 +100,9 @@ Please output only a number between 0-10, representing the activation value:"""
 
     # Call Chat API with logprobs
     client = get_openai_client()
+    eval_model = "openai/gpt-4o" if os.getenv("OPENROUTER_API_KEY") else "gpt-4o"
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model=eval_model,
         messages=[
             {"role": "user", "content": prompt}
         ],
