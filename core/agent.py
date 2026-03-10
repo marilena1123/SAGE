@@ -253,44 +253,6 @@ def ask_agent(model: str, history: List[Dict[str, Any]]) -> str:
 
                 return r.choices[0].message.content
 
-            # Handle generic OpenRouter models (e.g., openrouter-meta-llama/llama-3.1-8b-instruct)
-            elif model.startswith('openrouter-') and OPENAI_AVAILABLE:
-                openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
-                if not openrouter_api_key:
-                    raise ValueError("OPENROUTER_API_KEY is required for OpenRouter models")
-
-                client = openai.OpenAI(
-                    base_url="https://openrouter.ai/api/v1",
-                    api_key=openrouter_api_key,
-                )
-
-                # Extract model name: "openrouter-meta-llama/llama-3.1-8b-instruct" -> "meta-llama/llama-3.1-8b-instruct"
-                api_model = model.replace("openrouter-", "", 1)
-
-                params = {
-                    "model": api_model,
-                    "messages": history,
-                    "max_tokens": 4096,
-                }
-
-                r = client.chat.completions.create(**params)
-
-                # Record token usage
-                if TOKEN_TRACKING_AVAILABLE:
-                    tracker = get_tracker()
-                    if tracker:
-                        usage = getattr(r, 'usage', None)
-                        if usage:
-                            prompt_tokens = getattr(usage, 'prompt_tokens', 0)
-                            completion_tokens = getattr(usage, 'completion_tokens', 0)
-                            tracker.record_usage(
-                                model=api_model,
-                                prompt_tokens=prompt_tokens,
-                                completion_tokens=completion_tokens,
-                            )
-
-                return r.choices[0].message.content
-
             # Handle StepFun models via OpenRouter
             elif model.startswith('stepfun') and OPENAI_AVAILABLE:
                 openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
@@ -478,7 +440,7 @@ def ask_agent(model: str, history: List[Dict[str, Any]]) -> str:
                 
             else:
                 print(f"❌ ERROR: Unrecognized model name: {model}")
-                available_models = ['gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-4o-new', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4', 'stepfun', 'stepfun-step-2', 'stepfun-step-1', 'ollama', 'ollama-<model_name>', 'openrouter-<provider/model>']
+                available_models = ['gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-4o-new', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4', 'stepfun', 'stepfun-step-2', 'stepfun-step-1', 'ollama', 'ollama-<model_name>']
                 print(f"❌ Available models: {available_models}")
                 print(f"❌ OPENAI_AVAILABLE: {OPENAI_AVAILABLE}")
                 raise ValueError(f"Unrecognized model name: {model}. Available models: {available_models}")
@@ -498,7 +460,7 @@ def ask_agent(model: str, history: List[Dict[str, Any]]) -> str:
             elif "model" in str(e).lower() and "not found" in str(e).lower():
                 print(f'❌ ERROR: OpenAI model not found: {str(e)}')
                 print(f'❌ Requested model: {model}')
-                available_models = ['gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-4o-new', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4', 'stepfun', 'stepfun-step-2', 'stepfun-step-1', 'ollama', 'ollama-<model_name>', 'openrouter-<provider/model>']
+                available_models = ['gpt-5-nano', 'gpt-5-mini', 'gpt-5', 'gpt-4o-new', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4', 'stepfun', 'stepfun-step-2', 'stepfun-step-1', 'ollama', 'ollama-<model_name>']
                 print(f'❌ Available models: {available_models}')
                 raise ValueError(f"OpenAI model not found: {str(e)}. Requested: {model}, Available: {available_models}")
             else:
