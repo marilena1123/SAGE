@@ -5,3 +5,5 @@ python-dotenv
 requests
 numpy
 scipy
+transformers
+huggingface_hub

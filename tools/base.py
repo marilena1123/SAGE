@@ -302,11 +302,15 @@ Systematically analyze SAE features using scientific methodology: OBSERVE → HY
         
         # Enhance with detailed token-level information
         detailed_exemplars = []
+        has_fallback = False
         for text, max_activation in basic_exemplars:
             try:
                 # Get full activation trace with token-level data
                 trace = self.system.get_activation_trace(text)
-                
+
+                if trace.get('fallback', False):
+                    has_fallback = True
+
                 detailed_exemplars.append({
                     'text': text,
                     'max_activation': max_activation,
@@ -332,10 +336,12 @@ Systematically analyze SAE features using scientific methodology: OBSERVE → HY
                     'layer': -1,
                     'feature_index': -1
                 })
-        
-        # Cache the results
-        if detailed_exemplars:
+
+        # Cache the results only if no fallback data was used
+        if detailed_exemplars and not has_fallback:
             self._save_cached_detailed_exemplars(cache_key, detailed_exemplars)
+        elif has_fallback:
+            print("⚠️  Skipping cache — exemplars contain fallback data (model/tokenizer unavailable)")
         
         return detailed_exemplars
     

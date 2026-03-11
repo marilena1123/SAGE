@@ -413,8 +413,12 @@ class System:
 
             with torch.no_grad():
                 if self.use_hooked_transformer:
-                    # Use TransformerLens's hook system for MLP output
-                    hook_name = f"blocks.{self.layer}.hook_mlp_out"
+                    # Use SAE's configured hook point if available (e.g. residual stream SAEs need hook_resid_post)
+                    if self.sae and "__sae_lens_obj__" in self.sae:
+                        sae_obj = self.sae["__sae_lens_obj__"]
+                        hook_name = getattr(sae_obj.cfg, 'hook_name', f"blocks.{self.layer}.hook_mlp_out")
+                    else:
+                        hook_name = f"blocks.{self.layer}.hook_mlp_out"
                     _, cache = self.model.run_with_cache(
                         input_ids,
                         names_filter=[hook_name]
@@ -644,17 +648,19 @@ class System:
         }
 
         if not TORCH_AVAILABLE or self.model is None or self.tokenizer is None:
-            # Fallback stub
+            # Fallback stub — use 0.0 (not 0.5) so it's clearly "no data"
+            print("⚠️  Model/tokenizer not loaded — returning zero fallback activations")
             ids = [ord(c) % 256 for c in text]
-            fallback_activations = [0.5] * len(ids)
+            fallback_activations = [0.0] * len(ids)
             trace.update({
                 "tokens": list(text),
                 "token_ids": ids,
                 "per_token_activation": fallback_activations,
-                "summary_activation": max(fallback_activations),  # max activation
-                "summary_activation_mean": sum(fallback_activations) / len(fallback_activations),
-                "summary_activation_sum": sum(fallback_activations),
+                "summary_activation": 0.0,
+                "summary_activation_mean": 0.0,
+                "summary_activation_sum": 0.0,
                 "max_token_index": 0,
+                "fallback": True,
             })
             return trace
 
@@ -665,8 +671,12 @@ class System:
 
         with torch.no_grad():
             if self.use_hooked_transformer:
-                # Use TransformerLens's run_with_cache for HookedTransformer
-                hook_name = f"blocks.{self.layer}.hook_mlp_out"
+                # Use SAE's configured hook point if available (e.g. residual stream SAEs need hook_resid_post)
+                if self.sae and "__sae_lens_obj__" in self.sae:
+                    sae_obj = self.sae["__sae_lens_obj__"]
+                    hook_name = getattr(sae_obj.cfg, 'hook_name', f"blocks.{self.layer}.hook_mlp_out")
+                else:
+                    hook_name = f"blocks.{self.layer}.hook_mlp_out"
                 _, cache = self.model.run_with_cache(
                     input_ids,
                     names_filter=[hook_name]
