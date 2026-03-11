@@ -1,0 +1,18 @@
+### Install:
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install transformers sae-lens transformer-lens openai numpy scipy python-dotenv
+### Run:
+python main.py \
+  --agent_llm ollama-gemma3:27b \
+  --target_llm google/gemma-2-2b \
+  --sae_path "sae-lens://release=gemma-scope-2b-pt-res-canonical;sae_id=layer_0/width_16k/canonical" \
+  --features "layer0=0" \
+  --use_api_for_activations false \
+  --dataset_path ./toy_corpus.txt \
+  --device cpu \
+  --max_samples 500 \
+  --batch_size 4 \
+  --context_size 64 \
+  --max_rounds 2 \
+  --top_k 3
+
